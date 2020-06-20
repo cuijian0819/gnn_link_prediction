@@ -11,3 +11,7 @@ pip install --user networkx
 pip install --user tqdm
 pip install --user sklearn
 pip install --user gensim
+
+cd ../../JIAN/software/
+git clone https://github.com/aditya-grover/node2vec
+
