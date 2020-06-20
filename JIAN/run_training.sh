@@ -4,5 +4,6 @@ python Main.py \
 --train-neg train_neg.txt \
 --test-pos test_pos.txt \
 --test-neg test_neg.txt \
---hop 1 \
+--hop 2 \
+--use-embedding \
 --save-model
