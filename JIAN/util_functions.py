@@ -148,10 +148,10 @@ def generate_node2vec_embeddings(A, emd_size=128, negative_injection=False, trai
     nx_G = nx.from_scipy_sparse_matrix(A)
     G = node2vec.Graph(nx_G, is_directed=False, p=1, q=1)
     G.preprocess_transition_probs()
-    walks = G.simulate_walks(num_walks=10, walk_length=80)
-    walks = [map(str, walk) for walk in walks]
+    walks = G.simulate_walks(num_walks=16, walk_length=200)
+    walks = list(list(map(str, walk)) for walk in walks)
     model = Word2Vec(walks, size=emd_size, window=10, min_count=0, sg=1, 
-            workers=8, iter=1)
+            workers=8, iter=2)
     wv = model.wv
     embeddings = np.zeros([A.shape[0], emd_size], dtype='float32')
     sum_embeddings = 0
