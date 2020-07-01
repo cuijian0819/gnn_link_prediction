@@ -20,7 +20,7 @@ parser.add_argument('--train-pos', default=None, help='train pos')
 parser.add_argument('--train-neg', default=None, help='train neg')
 parser.add_argument('--test-pos', default=None, help='test pos')
 parser.add_argument('--test-neg', default=None, help='test neg')
-parser.add_argument('--test-unknown', default=None, help='test neg')
+parser.add_argument('--test-unknown', default=None, help='test unknown')
 
 parser.add_argument('--only-predict', action='store_true', default=False,
                     help='if True, will load the saved model and output predictions\
@@ -49,7 +49,7 @@ parser.add_argument('--all-unknown-as-negative', action='store_true', default=Fa
 parser.add_argument('--hop', default=1, metavar='S', 
                     help='enclosing subgraph hop number, \
                     options: 1, 2,...')
-parser.add_argument('--max-nodes-per-hop', default=1000, 
+parser.add_argument('--max-nodes-per-hop', default=200, 
                     help='if > 0, upper bound the # nodes per hop by subsampling')
 parser.add_argument('--use-embedding', action='store_true', default=False,
                     help='whether to use node2vec node embeddings')
@@ -80,25 +80,101 @@ args.file_dir = os.path.dirname(os.path.realpath('__file__'))
 train_pos, train_neg, test_pos, test_neg = None, None, None, None
 if args.train_pos is not None:
     args.train_dir = os.path.join(args.file_dir, './project_data/{}'.format(args.train_pos))
-    train_idx = np.loadtxt(args.train_dir, dtype=int)
-    train_pos = (train_idx[:, 0], train_idx[:, 1])
+
+    f = open(args.train_dir)
+    len2train_idx = {}
+    len2train_pos = {}
+    for line in f:
+        author_list = [int(author) for author in line.strip().split(" ")]
+        num_author = len(author_list)
+        if num_author not in len2train_idx:
+            len2train_idx[num_author] = np.zeros((0,num_author))
+        len2train_idx[num_author] = np.append(len2train_idx[num_author], [author_list], axis=0)
+    f.close()
+
+    # print(len2train_idx)
+    for length in len2train_idx:
+        len2train_pos[length] = tuple() 
+        for i in range(length):
+            len2train_pos[length] += (len2train_idx[length][:, i], )
+
+    # print(len2train_pos)
+
 if args.train_neg is not None:
     args.train_dir = os.path.join(args.file_dir, './project_data/{}'.format(args.train_neg))
-    train_idx = np.loadtxt(args.train_dir, dtype=int)
-    train_neg = (train_idx[:, 0], train_idx[:, 1])
+
+    f = open(args.train_dir)
+    len2train_idx = {}
+    len2train_neg = {}
+    for line in f:
+        author_list = [int(author) for author in line.strip().split(" ")]
+        num_author = len(author_list)
+        if num_author not in len2train_idx:
+            len2train_idx[num_author] = np.zeros((0,num_author))
+        len2train_idx[num_author] = np.append(len2train_idx[num_author], [author_list], axis=0)
+    f.close()
+
+    for length in len2train_idx:
+        len2train_neg[length] = tuple() 
+        for i in range(length):
+            len2train_neg[length] += (len2train_idx[length][:, i], )
+
+
 if args.test_pos is not None:
     args.test_dir = os.path.join(args.file_dir, './project_data/{}'.format(args.test_pos))
-    test_idx = np.loadtxt(args.test_dir, dtype=int)
-    test_pos = (test_idx[:, 0], test_idx[:, 1])
+    f = open(args.test_dir)
+    len2test_idx = {}
+    len2test_pos = {}
+    for line in f:
+        author_list = [int(author) for author in line.strip().split(" ")]
+        num_author = len(author_list)
+        if num_author not in len2test_idx:
+            len2test_idx[num_author] = np.zeros((0,num_author))
+        len2test_idx[num_author] = np.append(len2test_idx[num_author], [author_list], axis=0)
+    f.close()
+
+    for length in len2test_idx:
+        len2test_pos[length] = tuple() 
+        for i in range(length):
+            len2test_pos[length] += (len2test_idx[length][:, i], )
+
+
 if args.test_neg is not None:
     args.test_dir = os.path.join(args.file_dir, './project_data/{}'.format(args.test_neg))
-    test_idx = np.loadtxt(args.test_dir, dtype=int)
-    test_neg = (test_idx[:, 0], test_idx[:, 1])
+    f = open(args.test_dir)
+    len2test_idx = {}
+    len2test_neg = {}
+    for line in f:
+        author_list = [int(author) for author in line.strip().split(" ")]
+        num_author = len(author_list)
+        if num_author not in len2test_idx:
+            len2test_idx[num_author] = np.zeros((0,num_author))
+        len2test_idx[num_author] = np.append(len2test_idx[num_author], [author_list], axis=0)
+    f.close()
+
+    for length in len2test_idx:
+        len2test_neg[length] = tuple() 
+        for i in range(length):
+            len2test_neg[length] += (len2test_idx[length][:, i], )
 
 if args.test_unknown is not None:
     args.test_dir = os.path.join(args.file_dir, './project_data/{}'.format(args.test_unknown))
-    test_idx = np.loadtxt(args.test_dir, dtype=int)
-    test_unknown = (test_idx[:, 0], test_idx[:, 1])
+    f = open(args.test_dir)
+
+    len2test_idx = {}
+    len2test_unknown = {}
+    for line in f:
+        author_list = [int(author) for author in line.strip().split(" ")]
+        num_author = len(author_list)
+        if num_author not in len2test_idx:
+            len2test_idx[num_author] = np.zeros((0,num_author))
+        len2test_idx[num_author] = np.append(len2test_idx[num_author], [author_list], axis=0)
+    f.close()
+
+    for length in len2test_idx:
+        len2test_unknown[length] = tuple() 
+        for i in range(length):
+            len2test_unknown[length] += (len2test_idx[length][:, i], )
 
 # build observed network
 if args.data_name is not None:  # use .mat network
@@ -120,12 +196,6 @@ else:
 
 '''Train and apply classifier'''
 A = net.copy()  # the observed network
-if args.only_predict:
-    A[test_unknown[0], test_unknown[1]] = 0  # mask test links
-    A[test_unknown[1], test_unknown[0]] = 0  # mask test links
-else:
-    A[test_pos[0], test_pos[1]] = 0  # mask test links
-    A[test_pos[1], test_pos[0]] = 0  # mask test links
 A.eliminate_zeros()  # make sure the links are masked when using the sparse matrix in scipy-1.3.x
 
 node_information = None
@@ -144,7 +214,7 @@ if args.only_predict:  # no need to use negatives
         A, 
         None, 
         None, 
-        test_unknown, # test_pos is a name only, we don't actually know their labels
+        len2test_unknown, 
         None, 
         args.hop, 
         args.max_nodes_per_hop, 
@@ -155,10 +225,10 @@ if args.only_predict:  # no need to use negatives
 else:
     train_graphs, test_graphs, max_n_label = links2subgraphs(
         A, 
-        train_pos, 
-        train_neg, 
-        test_pos, 
-        test_neg, 
+        len2train_pos, 
+        len2train_neg, 
+        len2test_pos, 
+        len2test_neg, 
         args.hop, 
         args.max_nodes_per_hop,
         node_information,
@@ -168,14 +238,22 @@ else:
 
 # DGCNN configurations
 if args.only_predict:
+    print("Model is loading...")
     with open('model/{}_hyper.pkl'.format(args.data_name), 'rb') as hyperparameters_name:
         saved_cmd_args = pickle.load(hyperparameters_name)
+    
     for key, value in vars(saved_cmd_args).items(): # replace with saved cmd_args
         vars(cmd_args)[key] = value
-    classifier = Classifier()
+    
+    classifier = Classifier(max_label= max_n_label)
+    print(max_n_label, classifier.max_label)
+    
     if cmd_args.mode == 'gpu':
         classifier = classifier.cuda()
     model_name = 'model/{}_model.pth'.format(args.data_name)
+
+    print("prediction is based on: {}".format(model_name))
+
     classifier.load_state_dict(torch.load(model_name))
     classifier.eval()
     predictions = []
@@ -186,12 +264,10 @@ if args.only_predict:
             predictions.append(classifier(batch_graph)[0][:, 1].exp().cpu().detach())
             batch_graph = []
     predictions = torch.cat(predictions, 0).unsqueeze(1).numpy()
-    test_idx_and_pred = np.concatenate([test_idx, predictions], 1)
     pred_name = 'prediction/' + 'private_pred.txt'
-    np.savetxt(pred_name, test_idx_and_pred, fmt=['%d', '%d', '%1.2f'])
+    np.savetxt(pred_name, predictions, fmt=['%1.3f'])
     print('Predictions for {} are saved in {}'.format(args.test_unknown, pred_name))
     exit()
-
 
 cmd_args.gm = 'DGCNN'
 cmd_args.sortpooling_k = 0.6
@@ -206,6 +282,9 @@ cmd_args.learning_rate = 1e-4
 cmd_args.printAUC = True
 cmd_args.feat_dim = max_n_label + 1
 cmd_args.attr_dim = 0
+
+print("max label: ", max_n_label+1)
+
 if node_information is not None:
     cmd_args.attr_dim = node_information.shape[1]
 if cmd_args.sortpooling_k <= 1:

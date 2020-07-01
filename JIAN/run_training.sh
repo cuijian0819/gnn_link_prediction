@@ -5,5 +5,7 @@ python Main.py \
 --test-pos test_pos.txt \
 --test-neg test_neg.txt \
 --hop 2 \
---use-embedding \
---save-model
+--save-model \
+&& \
+
+echo "Finish Training"

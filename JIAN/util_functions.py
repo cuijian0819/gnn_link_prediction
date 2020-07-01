@@ -19,28 +19,39 @@ import node2vec
 import multiprocessing as mp
 from itertools import islice
     
-def links2subgraphs(A, train_pos, train_neg, test_pos, test_neg, h=1, 
+def links2subgraphs(A, len2train_pos, len2train_neg, len2test_pos, len2test_neg, h=1, 
                     max_nodes_per_hop=None, node_information=None, no_parallel=False):
     # extract enclosing subgraphs
     max_n_label = {'value': 0}
     def helper(A, links, g_label):
         g_list = []
+        length = len(links)
         if no_parallel:
-            for i, j in tqdm(zip(links[0], links[1])):
-                g, n_labels, n_features = subgraph_extraction_labeling(
-                    (i, j), A, h, max_nodes_per_hop, node_information
-                )
-                max_n_label['value'] = max(max(n_labels), max_n_label['value'])
-                g_list.append(GNNGraph(g, g_label, n_labels, n_features))
+            zip_args = [links[length][k] for k in range(length)]
+            for tp in tqdm(zip(*zip_args)):
+              tp = tuple(map(int, tp))
+              g, n_labels, n_features = subgraph_extraction_labeling(
+                tp, A, h, max_nodes_per_hop, node_information
+              )
+              max_n_label['value'] = max(max(n_labels), max_n_label['value'])
+              g_list.append(GNNGraph(g, g_label, n_labels, n_features))
+            
             return g_list
+        
         else:
             # the parallel extraction code
             start = time.time()
             pool = mp.Pool(mp.cpu_count())
+
+            tp_list = []
+            for length in range(2, 2+len(links)):
+                zip_args = [links[length][k] for k in range(length)]
+                tp_list += [tuple(map(int, tp)) for tp in zip(*zip_args)]
             results = pool.map_async(
                 parallel_worker, 
-                [((i, j), A, h, max_nodes_per_hop, node_information) for i, j in zip(links[0], links[1])]
+                [(tp, A, h, max_nodes_per_hop, node_information) for tp in tp_list]
             )
+
             remaining = results._number_left
             pbar = tqdm(total=remaining)
             while True:
@@ -61,12 +72,12 @@ def links2subgraphs(A, train_pos, train_neg, test_pos, test_neg, h=1,
 
     print('Enclosing subgraph extraction begins...')
     train_graphs, test_graphs = None, None
-    if train_pos and train_neg:
-        train_graphs = helper(A, train_pos, 1) + helper(A, train_neg, 0)
-    if test_pos and test_neg:
-        test_graphs = helper(A, test_pos, 1) + helper(A, test_neg, 0)
-    elif test_pos:
-        test_graphs = helper(A, test_pos, 1)
+    if len2train_pos and len2train_neg:
+        train_graphs = helper(A, len2train_pos, 1) + helper(A, len2train_neg, 0)
+    if len2test_pos and len2test_neg:
+        test_graphs = helper(A, len2test_pos, 1) + helper(A, len2test_neg, 0)
+    elif len2test_pos:
+        test_graphs = helper(A, len2test_pos, 1)
     return train_graphs, test_graphs, max_n_label['value']
 
 def parallel_worker(x):
@@ -76,9 +87,9 @@ def subgraph_extraction_labeling(ind, A, h=1, max_nodes_per_hop=None,
                                  node_information=None):
     # extract the h-hop enclosing subgraph around link 'ind'
     dist = 0
-    nodes = set([ind[0], ind[1]])
-    visited = set([ind[0], ind[1]])
-    fringe = set([ind[0], ind[1]])
+    nodes = set([ind[i] for i in range(len(ind))])
+    visited = set([ind[i] for i in range(len(ind))])
+    fringe = set([ind[i] for i in range(len(ind))])
     nodes_dist = [0, 0]
     for dist in range(1, h+1):
         fringe = neighbors(fringe, A)
@@ -92,21 +103,30 @@ def subgraph_extraction_labeling(ind, A, h=1, max_nodes_per_hop=None,
         nodes = nodes.union(fringe)
         nodes_dist += [dist] * len(fringe)
     # move target nodes to top
-    nodes.remove(ind[0])
-    nodes.remove(ind[1])
-    nodes = [ind[0], ind[1]] + list(nodes) 
+
+    for i in range(len(ind)):
+        nodes.remove(ind[i])
+
+    nodes = [ind[i] for i in range(len(ind))] + list(nodes) 
+    
     subgraph = A[nodes, :][:, nodes]
+
     # apply node-labeling
-    labels = node_label(subgraph)
+    labels = node_label(subgraph, ind, h)
+
     # get node features
     features = None
     if node_information is not None:
         features = node_information[nodes]
+
     # construct nx graph
     g = nx.from_scipy_sparse_matrix(subgraph)
+    
     # remove link between target nodes
     if g.has_edge(0, 1):
         g.remove_edge(0, 1)
+
+    # features = None
     return g, labels.tolist(), features
 
 
@@ -119,25 +139,29 @@ def neighbors(fringe, A):
         res = res.union(nei)
     return res
 
-
-def node_label(subgraph):
+def node_label(subgraph, ind, h):
     # an implementation of the proposed double-radius node labeling (DRNL)
     K = subgraph.shape[0]
-    subgraph_wo0 = subgraph[1:, 1:]
-    subgraph_wo1 = subgraph[[0]+list(range(2, K)), :][:, [0]+list(range(2, K))]
-    dist_to_0 = ssp.csgraph.shortest_path(subgraph_wo0, directed=False, unweighted=True)
-    dist_to_0 = dist_to_0[1:, 0]
-    dist_to_1 = ssp.csgraph.shortest_path(subgraph_wo1, directed=False, unweighted=True)
-    dist_to_1 = dist_to_1[1:, 0]
-    d = (dist_to_0 + dist_to_1).astype(int)
+
+    dist_to_node = []
+    for i in range(len(ind)):
+      dist_to_node_i = ssp.csgraph.shortest_path(subgraph, directed=False, unweighted=True)[i][len(ind):]
+      dist_to_node.append(dist_to_node_i)
+
+    d = sum(dist_to_node).astype(int)
+    # print(d)
+
     d_over_2, d_mod_2 = np.divmod(d, 2)
-    labels = 1 + np.minimum(dist_to_0, dist_to_1).astype(int) + d_over_2 * (d_over_2 + d_mod_2 - 1)
-    labels = np.concatenate((np.array([1, 1]), labels))
+
+    labels = 1 + np.minimum(*dist_to_node).astype(int) + d_over_2 * (d_over_2 + d_mod_2 - 1)
+    labels = np.concatenate((np.array([1 for i in range(len(ind))]), labels))
     labels[np.isinf(labels)] = 0
     labels[labels>1e6] = 0  # set inf labels to 0
     labels[labels<-1e6] = 0  # set -inf labels to 0
-    return labels
+    
+    assert(K == len(labels))
 
+    return labels
     
 def generate_node2vec_embeddings(A, emd_size=128, negative_injection=False, train_neg=None):
     if negative_injection:
@@ -151,7 +175,7 @@ def generate_node2vec_embeddings(A, emd_size=128, negative_injection=False, trai
     walks = G.simulate_walks(num_walks=16, walk_length=200)
     walks = list(list(map(str, walk)) for walk in walks)
     model = Word2Vec(walks, size=emd_size, window=10, min_count=0, sg=1, 
-            workers=8, iter=2)
+            workers=8, iter=16)
     wv = model.wv
     embeddings = np.zeros([A.shape[0], emd_size], dtype='float32')
     sum_embeddings = 0
