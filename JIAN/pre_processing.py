@@ -1,4 +1,3 @@
-
 from itertools import permutations, combinations
 
 
@@ -16,13 +15,15 @@ train_pos = open("./project_data/train_pos.txt", "w")
 train_neg = open("./project_data/train_neg.txt", "w")
 test_pos = open("./project_data/test_pos.txt", "w")
 test_neg = open("./project_data/test_neg.txt", "w")
+test_known = open("./project_data/test_known.txt", "w")
 
 for i in range(num_query):
     query = f_query.readline()
     answer = f_answer.readline().strip()
     author_list = [int(author)-1 for author in query.strip().split(" ")]
     query_1 = ' '.join(str(author) for author in author_list)
-    print(query_1)
+    test_known.write(query_1 + '\n')
+    
     if i >= train_num:
         if answer == 'True':
             test_pos.write(query_1 + '\n')

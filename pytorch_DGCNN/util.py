@@ -39,7 +39,7 @@ if len(cmd_args.latent_dim) == 1:
     cmd_args.latent_dim = cmd_args.latent_dim[0]
 
 class GNNGraph(object):
-    def __init__(self, g, label, node_tags=None, node_features=None):
+    def __init__(self, g, label, node_tags,  pred_link, node_features=None):
         '''
             g: a networkx graph
             label: an integer graph label
@@ -52,7 +52,8 @@ class GNNGraph(object):
         self.node_features = node_features  # numpy array (node_num * feature_dim)
         self.degs = list(dict(g.degree).values())
         self.nodes = list(g.nodes())
-        
+        self.pred_link = pred_link
+
         if len(g.edges()) != 0:
             x, y = zip(*g.edges())
             self.num_edges = len(x)        

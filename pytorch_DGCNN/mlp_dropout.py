@@ -44,13 +44,13 @@ class MLPRegression(nn.Module):
             return pred
 
 class MLPClassifier(nn.Module):
-    def __init__(self, input_size, hidden_size, num_class, with_dropout=False):
+    def __init__(self, input_size, hidden_size, num_class, with_dropout=False, predict = False):
         super(MLPClassifier, self).__init__()
 
         self.h1_weights = nn.Linear(input_size, hidden_size)
         self.h2_weights = nn.Linear(hidden_size, num_class)
         self.with_dropout = with_dropout
-
+        self.predict = predict
         weights_init(self)
 
     def forward(self, x, y = None):
@@ -61,8 +61,7 @@ class MLPClassifier(nn.Module):
 
         logits = self.h2_weights(h1)
         logits = F.log_softmax(logits, dim=1)
-
-        if y is not None:
+        if not self.predict:
             y = Variable(y)
             loss = F.nll_loss(logits, y)
 
@@ -70,4 +69,6 @@ class MLPClassifier(nn.Module):
             acc = pred.eq(y.data.view_as(pred)).cpu().sum().item() / float(y.size()[0])
             return logits, loss, acc
         else:
-            return logits
+            pred = logits.data.max(1, keepdim=True)[1]
+            return logits, pred
+

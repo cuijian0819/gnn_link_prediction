@@ -15,9 +15,10 @@ cur_dir = os.path.dirname(os.path.realpath(__file__))
 sys.path.append('%s/../pytorch_DGCNN' % cur_dir)
 sys.path.append('%s/software/node2vec/src' % cur_dir)
 from util import GNNGraph
-import node2vec
 import multiprocessing as mp
 from itertools import islice
+from itertools import permutations, combinations
+import math
     
 def links2subgraphs(A, len2train_pos, len2train_neg, len2test_pos, len2test_neg, h=1, 
                     max_nodes_per_hop=None, node_information=None, no_parallel=False):
@@ -30,11 +31,11 @@ def links2subgraphs(A, len2train_pos, len2train_neg, len2test_pos, len2test_neg,
             zip_args = [links[length][k] for k in range(length)]
             for tp in tqdm(zip(*zip_args)):
               tp = tuple(map(int, tp))
-              g, n_labels, n_features = subgraph_extraction_labeling(
+              g, n_labels, n_features, ind = subgraph_extraction_labeling(
                 tp, A, h, max_nodes_per_hop, node_information
               )
               max_n_label['value'] = max(max(n_labels), max_n_label['value'])
-              g_list.append(GNNGraph(g, g_label, n_labels, n_features))
+              g_list.append(GNNGraph(g, g_label, n_labels, n_features, tp))
             
             return g_list
         
@@ -44,7 +45,7 @@ def links2subgraphs(A, len2train_pos, len2train_neg, len2test_pos, len2test_neg,
             pool = mp.Pool(mp.cpu_count())
 
             tp_list = []
-            for length in range(2, 2+len(links)):
+            for length in links:
                 zip_args = [links[length][k] for k in range(length)]
                 tp_list += [tuple(map(int, tp)) for tp in zip(*zip_args)]
             results = pool.map_async(
@@ -62,9 +63,9 @@ def links2subgraphs(A, len2train_pos, len2train_neg, len2test_pos, len2test_neg,
             results = results.get()
             pool.close()
             pbar.close()
-            g_list = [GNNGraph(g, g_label, n_labels, n_features) for g, n_labels, n_features in results]
+            g_list = [GNNGraph(g, g_label, n_labels, ind, n_features) for g, n_labels, n_features, ind in results]
             max_n_label['value'] = max(
-                max([max(n_labels) for _, n_labels, _ in results]), max_n_label['value']
+                max([max(n_labels) for _, n_labels, _, _ in results]), max_n_label['value']
             )
             end = time.time()
             print("Time eplased for subgraph extraction: {}s".format(end-start))
@@ -127,7 +128,7 @@ def subgraph_extraction_labeling(ind, A, h=1, max_nodes_per_hop=None,
         g.remove_edge(0, 1)
 
     # features = None
-    return g, labels.tolist(), features
+    return g, labels.tolist(), features, ind
 
 
 def neighbors(fringe, A):
@@ -139,6 +140,7 @@ def neighbors(fringe, A):
         res = res.union(nei)
     return res
 
+
 def node_label(subgraph, ind, h):
     # an implementation of the proposed double-radius node labeling (DRNL)
     K = subgraph.shape[0]
@@ -149,11 +151,18 @@ def node_label(subgraph, ind, h):
       dist_to_node.append(dist_to_node_i)
 
     d = sum(dist_to_node).astype(int)
-    # print(d)
 
     d_over_2, d_mod_2 = np.divmod(d, 2)
 
-    labels = 1 + np.minimum(*dist_to_node).astype(int) + d_over_2 * (d_over_2 + d_mod_2 - 1)
+    while (len(dist_to_node) > 2):
+        x = dist_to_node.pop()        
+        y = dist_to_node.pop()     
+        min_dist = np.minimum(x, y).astype(int)
+        dist_to_node.append(list(min_dist))
+
+    min_dist = np.minimum(*dist_to_node).astype(int)
+
+    labels = 1 + min_dist + d_over_2 * (d_over_2 + d_mod_2 - 1)
     labels = np.concatenate((np.array([1 for i in range(len(ind))]), labels))
     labels[np.isinf(labels)] = 0
     labels[labels>1e6] = 0  # set inf labels to 0

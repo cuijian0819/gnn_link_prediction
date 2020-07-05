@@ -27,6 +27,8 @@ parser.add_argument('--only-predict', action='store_true', default=False,
                     for links in test-name; you still need to specify train-name\
                     in order to build the observed network and extract subgraphs')
 
+parser.add_argument('--epoch', default=50, help='epoch', required=False)
+
 parser.add_argument('--batch-size', type=int, default=50)
 parser.add_argument('--max-train-num', type=int, default=100000, 
                     help='set maximum number of train links (to fit into memory)')
@@ -39,12 +41,6 @@ parser.add_argument('--test-ratio', type=float, default=0.1,
 parser.add_argument('--no-parallel', action='store_true', default=False,
                     help='if True, use single thread for subgraph extraction; \
                     by default use all cpu cores to extract subgraphs in parallel')
-parser.add_argument('--all-unknown-as-negative', action='store_true', default=False,
-                    help='if True, regard all unknown links as negative test data; \
-                    sample a portion from them as negative training data. Otherwise,\
-                    train negative and test negative data are both sampled from \
-                    unknown links without overlap.')
-
 # model settings
 parser.add_argument('--hop', default=1, metavar='S', 
                     help='enclosing subgraph hop number, \
@@ -74,6 +70,8 @@ if args.max_nodes_per_hop is not None:
 
 
 '''Prepare data'''
+max_query_node = 0
+
 args.file_dir = os.path.dirname(os.path.realpath('__file__'))
 
 # check whether train and test links are provided
@@ -86,6 +84,9 @@ if args.train_pos is not None:
     len2train_pos = {}
     for line in f:
         author_list = [int(author) for author in line.strip().split(" ")]
+        if len(author_list) > max_query_node:
+            max_query_node = len(author_list)
+
         num_author = len(author_list)
         if num_author not in len2train_idx:
             len2train_idx[num_author] = np.zeros((0,num_author))
@@ -108,6 +109,9 @@ if args.train_neg is not None:
     len2train_neg = {}
     for line in f:
         author_list = [int(author) for author in line.strip().split(" ")]
+        if len(author_list) > max_query_node:
+            max_query_node = len(author_list)
+
         num_author = len(author_list)
         if num_author not in len2train_idx:
             len2train_idx[num_author] = np.zeros((0,num_author))
@@ -127,6 +131,9 @@ if args.test_pos is not None:
     len2test_pos = {}
     for line in f:
         author_list = [int(author) for author in line.strip().split(" ")]
+        if len(author_list) > max_query_node:
+            max_query_node = len(author_list)
+
         num_author = len(author_list)
         if num_author not in len2test_idx:
             len2test_idx[num_author] = np.zeros((0,num_author))
@@ -146,6 +153,9 @@ if args.test_neg is not None:
     len2test_neg = {}
     for line in f:
         author_list = [int(author) for author in line.strip().split(" ")]
+        if len(author_list) > max_query_node:
+            max_query_node = len(author_list)
+
         num_author = len(author_list)
         if num_author not in len2test_idx:
             len2test_idx[num_author] = np.zeros((0,num_author))
@@ -165,6 +175,9 @@ if args.test_unknown is not None:
     len2test_unknown = {}
     for line in f:
         author_list = [int(author) for author in line.strip().split(" ")]
+        if len(author_list) > max_query_node:
+            max_query_node = len(author_list)
+
         num_author = len(author_list)
         if num_author not in len2test_idx:
             len2test_idx[num_author] = np.zeros((0,num_author))
@@ -193,6 +206,17 @@ if args.data_name is not None:  # use .mat network
 else:
     print("SHOULD NOT HAPPEN")
     exit(-1)
+
+# ground-truth max label
+n = max_query_node
+d = (5 * (n**2) - n) / 2 
+max_label = 3 + (d//2) * ( (d//2) + (d%2) -1 )
+
+if max_label > 10000:
+    max_label = 10000
+
+print("max number of query node: ", max_query_node)
+print("ground-truth max label: ", max_label)
 
 '''Train and apply classifier'''
 A = net.copy()  # the observed network
@@ -236,6 +260,9 @@ else:
     )
     print('# train: %d, # test: %d' % (len(train_graphs), len(test_graphs)))
 
+assert(max_n_label <= max_label)
+print("max label in subgraph: ", max_n_label)
+
 # DGCNN configurations
 if args.only_predict:
     print("Model is loading...")
@@ -245,8 +272,7 @@ if args.only_predict:
     for key, value in vars(saved_cmd_args).items(): # replace with saved cmd_args
         vars(cmd_args)[key] = value
     
-    classifier = Classifier(max_label= max_n_label)
-    print(max_n_label, classifier.max_label)
+    classifier = Classifier(predict = True)
     
     if cmd_args.mode == 'gpu':
         classifier = classifier.cuda()
@@ -256,18 +282,35 @@ if args.only_predict:
 
     classifier.load_state_dict(torch.load(model_name))
     classifier.eval()
-    predictions = []
+    
+    predictions_tf = []
+    predictions_score = []
     batch_graph = []
+    pred_link_list = []
     for i, graph in enumerate(test_graphs):
         batch_graph.append(graph)
+        pred_link_list.append(graph.pred_link)
         if len(batch_graph) == cmd_args.batch_size or i == (len(test_graphs)-1):
-            predictions.append(classifier(batch_graph)[0][:, 1].exp().cpu().detach())
+            #print(classifier(batch_graph)[:,0].tolist())
+            (score, answer) = classifier(batch_graph)
+            predictions_tf += answer[:,0].tolist()
+            predictions_score.append(score[:, 1].exp().cpu().detach())
             batch_graph = []
-    predictions = torch.cat(predictions, 0).unsqueeze(1).numpy()
-    pred_name = 'prediction/' + 'private_pred.txt'
-    np.savetxt(pred_name, predictions, fmt=['%1.3f'])
-    print('Predictions for {} are saved in {}'.format(args.test_unknown, pred_name))
+    predictions_score = torch.cat(predictions_score, 0).unsqueeze(1).numpy()
+
+    pred_tf_name = 'prediction/' + 'pred_tf.txt'
+    pred_score_name = 'prediction/' + 'pred_score.txt'
+    pred_link_name = 'prediction/' + 'pred_link.txt'
+    np.savetxt(pred_tf_name, predictions_tf, fmt=['%d'])
+    np.savetxt(pred_score_name, predictions_score, fmt=['%.3f'])
+    f = open(pred_link_name ,'w')
+    for pred_link in pred_link_list:
+        line = ' '.join(str(int(link)+1) for link in pred_link)
+        f.write(line + '\n')
+    
+    print('Predictions for are saved! \n')
     exit()
+
 
 cmd_args.gm = 'DGCNN'
 cmd_args.sortpooling_k = 0.6
@@ -277,13 +320,12 @@ cmd_args.out_dim = 0
 cmd_args.dropout = True
 cmd_args.num_class = 2
 cmd_args.mode = 'gpu' if args.cuda else 'cpu'
-cmd_args.num_epochs = 50
+cmd_args.num_epochs = int(args.epoch)
 cmd_args.learning_rate = 1e-4
 cmd_args.printAUC = True
-cmd_args.feat_dim = max_n_label + 1
+cmd_args.feat_dim = int(max_label + 1)
 cmd_args.attr_dim = 0
 
-print("max label: ", max_n_label+1)
 
 if node_information is not None:
     cmd_args.attr_dim = node_information.shape[1]

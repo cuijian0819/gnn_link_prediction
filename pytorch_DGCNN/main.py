@@ -17,7 +17,7 @@ from sklearn import metrics
 from util import cmd_args, load_data
 
 class Classifier(nn.Module):
-    def __init__(self, regression=False, max_label=100000):
+    def __init__(self, regression=False):
         super(Classifier, self).__init__()
         self.regression = regression
         if cmd_args.gm == 'DGCNN':
@@ -42,8 +42,7 @@ class Classifier(nn.Module):
         self.mlp = MLPClassifier(input_size=out_dim, hidden_size=cmd_args.hidden, num_class=cmd_args.num_class, with_dropout=cmd_args.dropout)
         if regression:
             self.mlp = MLPRegression(input_size=out_dim, hidden_size=cmd_args.hidden, with_dropout=cmd_args.dropout)
-        self.max_label = max_label
-
+            
     def PrepareFeatureLabel(self, batch_graph):
         if self.regression:
             labels = torch.FloatTensor(len(batch_graph))
